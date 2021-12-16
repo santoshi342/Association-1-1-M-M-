@@ -3,6 +3,10 @@ const User = require('../models').User;
 const Profile = require('../models').Profile;
 var bcrypt = require('bcryptjs');
 var jwt = require('jsonwebtoken');
+const nodemailer = require("nodemailer");
+var randomize = require('randomatic');
+
+
 
 
 async function register(req, res){
@@ -54,6 +58,20 @@ async function register(req, res){
     }
 }
 
+/* findall all register user's */
+const findAll = (req, res) => {
+    User.findAll()
+    .then(data => {
+    console.log(data)
+   res.send(data);
+   })
+   .catch(err => {
+    console.log(111,{err})
+    res.status(500).send({
+    message: "Error retrieving  with id=" + id
+    });
+    });
+};
 
 
 /* for Login */
@@ -62,7 +80,7 @@ function login(req, res){
   var Email = req.body.Email;
   var Password = req.body.Password;
   // console.log(req.body)
-  User.findOne({where: {Email: Email}, attributes: ['id','Email', 'Name', 'Password']})
+  User.findOne({where: {Email: Email}, attributes: ['id','Email','Name','Password']})
     .then(function (data){
       if (!data) {
         res.status(400).json({message:'invalid email'})
@@ -102,15 +120,19 @@ function my_profile(req, res){
 }
 
 
+
+/* update profile */
 async function update_profile(req,res){
-  try{  
+  // try{  
     if((req.body.Email || req.body.Password)){
       if(!req.body.Current_Password){
         res.status(400).json({message: "Current Password filed is required"})
       }
     }
+    
     let user = await User.findOne({where: {id : req.user.id }})
-    if(req.body.Current_Password && !bcrypt.compareSync(req.body.Current_Password, user.Password)){
+
+    if(req.body.Current_Password && !bcrypt.compareSync(req.body.Current_Password,user.Password)){
       res.status(400).json({message: "Current Password is Invalid"})
     }
     else {
@@ -131,60 +153,143 @@ async function update_profile(req,res){
         var hash = bcrypt.hashSync(req.body.Password, salt);
         user.Password = hash
       }
-      await user.save()
-      res.status(200).json({user})
+
+      if(req.file){
+        //console.log('333',req.file) // profile_name,imagename(abc.jpg),  
+        const profile = await req.user.getProfile();
+        profile.image = req.file.path
+        await profile.save()
+      }
+
+       await user.save()
+    res.status(200).json({user})  
     }
+}    
+
+  //}
+  // catch(err){
+  //   res.status(400).json({message:"Not updated user profile", err})
+  // } 
+//}
+
+
+
+async function forgot_passwort(req, res){
+  let user_data = await User.findOne({where:{Email:req.body.Email}});
+  
+  if(user_data){
+
+    var val = Math.floor(100000 + Math.random() * 9000);
+  
+    var transport = nodemailer.createTransport({
+      host: "smtp.mailtrap.io",
+      port: 2525,
+      auth: {
+        user: "2de6fc0a47a3a7",
+        pass: "edec825d10eb61"
+      }
+      });
+    
+    let info = await transport.sendMail({
+
+
+      from: '"Fred Foo 👻" <foo@example.com>', // sender address
+      to: user_data.Email, // list of receivers
+      subject: "Forgot Password", // Subject line
+      html: "<b> Dear</b> "+user_data.Email+"<br><br>Please click the following link: "+req.headers.host+"<br><br>Your token is: "+val+
+      "<br><br>Thank You!", // html body
+    });
+
+   
+  let update_token = await User.update({reset_password_token:val}, {where:{Email:req.body.Email}})
+
+  res.status(200).json({message:'Forgot Password', user_data})
+
+  }else{
+    res.status(400).json({message:'Email Not found, Please check your enter email'})
   }
-  catch(err){
-    res.status(400).json({message:"Not updated user profile", err})
-  } 
+}
+
+/* Passowrd Reset API */
+async function reset_password(req, res){
+
+
+
+
+  if(req.body.Email && req.body.reset_password_token){
+    var user_info = await User.findOne({
+      where:{
+        Email:req.body.Email
+      }
+    });
+    if(user_info){
+      console.log("matched email",user_info)
+      if(user_info.Email && user_info.reset_password_token){
+        var salt =  bcrypt.genSaltSync(10);
+        var hash = bcrypt.hashSync(req.body.Password, salt);
+
+        let update_password = await User.update({
+          Password:hash,
+          reset_password_token:null
+        },
+        { 
+          where:{
+            Email:req.body.Email,
+            reset_password_token:req.body.reset_password_token
+          }
+        })
+       
+        if(update_password[0]){
+          res.status(200).json({message:"Password has beed updated", update_password})
+        }else{
+          res.status(400).json({message:"Password not updated",update_password})
+        }
+      }
+    }
+
+
+/* code for reset password mail receive 
+
+if(update_password){
+
+    var val = Math.floor(100000 + Math.random() * 9000);
+  
+    var transport = nodemailer.createTransport({
+      host: "smtp.mailtrap.io",
+      port: 2525,
+      auth: {
+        user: "2de6fc0a47a3a7",
+        pass: "edec825d10eb61"
+      }
+      });
+    
+    let info = await transport.sendMail({
+
+
+      from: '"Fred Foo 👻" <foo@example.com>', // sender address
+      to: user_data.Email, // list of receivers
+      subject: "Reset Password", // Subject line
+      html: "<b> Dear</b> "+user_data.Email+"<br><br>Please click the following link: "+req.headers.host+"<br><br>Your token is: "+val+
+      "<br><br>Thank You!", // html body
+    });
+
+  } */
+
+
+
+
+
+
+
+
+
+
+
+  }else{
+    res.status(400).json({message:'Please Enter a Email & token'})
+  }
 }
 
 
-
-// sync function update_profile(req,res){
-//   try{
-    
-//     if((req.body.Email || req.body.Password)){
-//       if(!req.body.Current_Password){
-//         res.status(400).json({message: "Current Password filed is required"})
-//       }
-//     }
-//     let user = await User.findOne({where: {id : decoded.data.id }})
-//     if(req.body.Current_Password && !bcrypt.compareSync(req.body.Current_Password, user.Password)){
-//       res.status(400).json({message: "Current Password is Invalid"})
-//     }
-//     else {
-//       if(req.body.Name){
-//         user.Name = req.body.Name
-//       }
-//       if(req.body.Email){
-//         user.Email = req.body.Email
-//       }
-//       if(req.body.Phone){
-//         user.Phone = req.body.Phone
-//       }
-//       if(req.body.Age){
-//         user.Age = req.body.Age
-//       }
-//       if(req.body.Password){
-//         var salt =  bcrypt.genSaltSync(10);   
-//         var hash = bcrypt.hashSync(req.body.Password, salt);
-//         user.Password = hash
-//       }
-//       await user.save()
-
-//       res.status(200).json({user})
-//     }
-//   }
-//   catch(err){
-//     res.status(400).json({message:"Not updated user profile", err})
-//   } 
-// }
-
-
-
-
-
-
-module.exports = {register,login, my_profile, update_profile}
+module.exports = {register,login, my_profile, update_profile, forgot_passwort, 
+                 findAll, reset_password}

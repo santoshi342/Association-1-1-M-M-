@@ -21,6 +21,7 @@ async function create_product(req, res){
 
 		const category = await Category.findAll({where: {id: {[Op.in]: req.body.CategoryId } }})
 		// category = [{},{}]
+		
 		await product.addCategory(category)
 
 		const cats = await product.getCategories()
@@ -86,6 +87,7 @@ async function update_product(req, res){
 		res.status(400).send({message:'Not Updated Data', err})
 	})
 }
+
 
 //findone Api 
 
